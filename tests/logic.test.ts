@@ -4,13 +4,16 @@ import {
   capsFrom,
   contextTone,
   formatTokens,
-  goalDraft,
+  groupContext,
   judgeEffort,
   judgeModel,
   matchesModel,
   modelLabel,
   modelOptions,
+  modelShort,
+  sortModels,
   textBar,
+  trackIndex,
 } from '../hooks/logic'
 
 test('formatTokens usa k/M em pt-BR e "—" para ausente', async () => {
@@ -54,6 +57,7 @@ test('modelOptions: opção do usuário, depois /config, depois reserva', async 
     },
   ] as never
   expect(modelOptions(rows, 'haiku, opus').models.map(m => m.id)).toEqual(['haiku', 'opus'])
+  expect(modelOptions(rows, '').models.map(m => m.label)).toEqual(['Opus', 'Sonnet'])
   const fromConfig = modelOptions(rows, '')
   expect(fromConfig.source).toBe('config')
   expect(fromConfig.models.map(m => m.id)).toEqual(['opus', 'sonnet'])
@@ -84,7 +88,7 @@ test('judgeEffort distingue confirmado, ajustado e sem suporte', async () => {
   expect(judgeEffort(req, 'max')?.status).toBe('confirmed')
   const adjusted = judgeEffort(req, 'high')
   expect(adjusted?.status).toBe('failed')
-  expect(adjusted?.detail).toMatch(/Alto/)
+  expect(adjusted?.detail).toMatch(/High/)
   expect(judgeEffort(req, undefined)?.status).toBe('failed')
   // Só pedidos pendentes são julgados.
   const sending = { target: 'max', status: 'sending' } as const
@@ -99,11 +103,33 @@ test('judgeModel confirma ou reprova pelo modelo reportado', async () => {
   expect(judgeModel(req, undefined)).toBe(req)
 })
 
-test('goalDraft preserva o texto digitado e não duplica /goal', async () => {
-  expect(goalDraft('')).toEqual({ text: '/goal ', cursor: 6 })
-  expect(goalDraft('terminar o relatório')).toEqual({
-    text: '/goal terminar o relatório',
-    cursor: '/goal terminar o relatório'.length,
-  })
-  expect(goalDraft('/goal já existe').text).toBe('/goal já existe')
+test('modelShort e sortModels: nomes curtos, do mais forte ao mais leve', async () => {
+  expect(modelShort('claude-opus-5-5')).toBe('Opus')
+  expect(modelShort('x-1')).toBe('x-1')
+  const ids = sortModels([{ id: 'haiku' }, { id: 'x' }, { id: 'fable' }, { id: 'sonnet' }]).map(m => m.id)
+  expect(ids).toEqual(['fable', 'sonnet', 'haiku', 'x'])
+})
+
+test('groupContext separa instruções, ferramentas, conversa e reserva', async () => {
+  const parts = groupContext([
+    { name: 'System prompt', tokens: 3000, kind: 'used' },
+    { name: 'System tools', tokens: 12000, kind: 'used' },
+    { name: 'MCP tools', tokens: 2000, kind: 'used' },
+    { name: 'Memory files', tokens: 1000, kind: 'used' },
+    { name: 'Messages', tokens: 50000, kind: 'used' },
+    { name: 'Free space', tokens: 80000, kind: 'free' },
+    { name: 'Autocompact buffer', tokens: 33000, kind: 'buffer' },
+    { name: 'MCP tools (deferred)', tokens: 9000, kind: 'deferred' },
+  ])
+  expect(parts).toEqual({ instructions: 4000, tools: 14000, conversation: 50000, reserve: 33000 })
+})
+
+test('trackIndex mapeia a posição do ponteiro para o nível', async () => {
+  expect(trackIndex(0, 15)).toBe(0)
+  expect(trackIndex(4, 15)).toBe(1)
+  expect(trackIndex(7.5, 15)).toBe(2)
+  expect(trackIndex(14.9, 15)).toBe(4)
+  expect(trackIndex(99, 15)).toBe(4)
+  expect(trackIndex(-3, 15)).toBe(0)
+  expect(trackIndex(5, 0)).toBe(0)
 })

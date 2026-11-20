@@ -31,6 +31,14 @@ export type RcContext = {
   percent?: number
 }
 
+/** Tokens por segmento da barra, a partir do detalhamento do /context. */
+export type RcParts = {
+  instructions: number
+  tools: number
+  conversation: number
+  reserve: number
+}
+
 /** Tokens somados das respostas do loop principal desde o carregamento ou o último /clear. */
 export type RcTokens = {
   input: number
@@ -61,6 +69,9 @@ declare module 'claude-code' {
     'router-models': {
       caps: RcCaps | null
       context: RcContext | null
+      parts: RcParts | null
+      effortPreview: string | null
+      trackFailed: boolean
       tokens: RcTokens | null
       currentModel: string | null
       apiModel: string | null

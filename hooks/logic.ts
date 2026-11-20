@@ -1,7 +1,7 @@
 // Funções puras do Router de Modelos: sem $, sem estado, testáveis isoladamente.
 import type { CommandInfo, ConfigRow } from 'claude-code'
 
-import type { RcCaps, RcEffort, RcModelOption, RcRequest } from '../types'
+import type { RcCaps, RcEffort, RcModelOption, RcParts, RcRequest } from '../types'
 
 export const PLUGIN = 'router-models'
 
@@ -9,20 +9,29 @@ export const PLUGIN = 'router-models'
 export const EFFORTS: readonly RcEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
 export const EFFORT_LABEL: Record<RcEffort, string> = {
-  low: 'Baixo',
-  medium: 'Médio',
-  high: 'Alto',
-  xhigh: 'Extra',
-  max: 'Máximo',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'X-High',
+  max: 'Max',
 }
 
-/** Rótulo curto (botões) de cada nível. */
+/** Rótulo curto (botões no terminal estreito) de cada nível. */
 export const EFFORT_SHORT: Record<RcEffort, string> = {
-  low: 'B',
+  low: 'L',
   medium: 'M',
-  high: 'A',
-  xhigh: 'X',
-  max: 'Máx',
+  high: 'H',
+  xhigh: 'XH',
+  max: 'Max',
+}
+
+/** Cor de cada nível: verde, azul, roxo, âmbar e vermelho. */
+export const EFFORT_COLOR: Record<RcEffort, string> = {
+  low: '#34c38f',
+  medium: '#3b82f6',
+  high: '#8b5cf6',
+  xhigh: '#f5a524',
+  max: '#ef5350',
 }
 
 /**
@@ -38,7 +47,7 @@ export const FALLBACK_MODELS: readonly string[] = [
   'claude-haiku-5-5',
 ]
 
-const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'] as const
+export const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'] as const
 
 export function isEffort(value: unknown): value is RcEffort {
   return typeof value === 'string' && (EFFORTS as readonly string[]).includes(value)
@@ -53,6 +62,49 @@ export function modelLabel(id: string): string {
   const name = family.charAt(0).toUpperCase() + family.slice(1)
   const version = /(\d+)[-.](\d+)/.exec(lower.slice(lower.indexOf(family) + family.length))
   return version ? `${name} ${version[1]}.${version[2]}` : name
+}
+
+/** Rótulo do botão: só a família ("Opus"), ou o id quando não há família conhecida. */
+export function modelShort(id: string): string {
+  const lower = id.toLowerCase()
+  if (lower === 'default') return 'Padrão'
+  const family = FAMILIES.find(f => lower.includes(f))
+  return family === undefined ? id : family.charAt(0).toUpperCase() + family.slice(1)
+}
+
+/** Ordena os modelos do mais forte ao mais leve; desconhecidos ficam no fim, na ordem original. */
+export function sortModels<T extends { id: string }>(models: readonly T[]): T[] {
+  const rank = (id: string) => {
+    const i = FAMILIES.findIndex(f => id.toLowerCase().includes(f))
+    return i === -1 ? FAMILIES.length : i
+  }
+  return models.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m.id) - rank(b.m.id) || a.i - b.i).map(x => x.m)
+}
+
+/** Agrupa as categorias do /context nos quatro segmentos da barra. */
+export function groupContext(
+  categories: readonly { name: string; tokens: number; kind: string }[],
+): RcParts {
+  const parts: RcParts = { instructions: 0, tools: 0, conversation: 0, reserve: 0 }
+  for (const c of categories) {
+    if (!Number.isFinite(c.tokens) || c.tokens <= 0) continue
+    if (c.kind === 'buffer') parts.reserve += c.tokens
+    else if (c.kind !== 'used') continue
+    else if (/message|mensag|conversa/i.test(c.name)) parts.conversation += c.tokens
+    else if (/tool|ferrament/i.test(c.name)) parts.tools += c.tokens
+    else parts.instructions += c.tokens
+  }
+  return parts
+}
+
+/**
+ * Nível da trilha sob o ponteiro. A trilha tem os cinco pontos espaçados por
+ * igual, com uma margem de meio passo em cada ponta.
+ */
+export function trackIndex(x: number, columns: number): number {
+  if (!(columns > 0) || !Number.isFinite(x)) return 0
+  const f = Math.max(0, Math.min(1, x / columns))
+  return Math.max(0, Math.min(EFFORTS.length - 1, Math.floor(f * EFFORTS.length)))
 }
 
 /** Forma comparável de um nome de modelo: sem "claude", sem sufixos [..], só letras e dígitos. */
@@ -92,14 +144,14 @@ export function modelOptions(
     .map(s => s.trim())
     .filter(s => s !== '')
   if (fromOption.length > 0) {
-    return { models: fromOption.map(id => ({ id, label: modelLabel(id) })), source: 'fallback' }
+    return { models: fromOption.map(id => ({ id, label: modelShort(id) })), source: 'fallback' }
   }
   const row = configRows?.find(r => r.key === 'model')
   const options = row?.options?.filter(o => o.trim() !== '') ?? []
   if (options.length > 0) {
-    return { models: options.map(id => ({ id, label: modelLabel(id) })), source: 'config' }
+    return { models: sortModels(options.map(id => ({ id, label: modelShort(id) }))), source: 'config' }
   }
-  return { models: FALLBACK_MODELS.map(id => ({ id, label: modelLabel(id) })), source: 'fallback' }
+  return { models: FALLBACK_MODELS.map(id => ({ id, label: modelShort(id) })), source: 'fallback' }
 }
 
 /** Monta as capacidades a partir do que o aplicativo listou. */
@@ -190,17 +242,4 @@ export function requestText(kind: 'Modelo' | 'Esforço', req: RcRequest | null, 
     case 'failed':
       return `${kind}: falha ao aplicar ${label}${req.detail ? ` (${req.detail})` : ''}`
   }
-}
-
-/**
- * O texto que o botão Meta deixa na caixa: "/goal " antes do que já foi
- * digitado, sem duplicar o prefixo. Retorna também a posição do cursor.
- */
-export function goalDraft(current: string): { text: string; cursor: number } {
-  const trimmed = current.replace(/^\s+/, '')
-  if (/^\/goal(\s|$)/.test(trimmed)) {
-    return { text: trimmed, cursor: trimmed.length }
-  }
-  const text = trimmed === '' ? '/goal ' : `/goal ${trimmed}`
-  return { text, cursor: text.length }
 }

@@ -4,17 +4,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage } from 'claude-code'
 
-import type { RcCaps, RcContext, RcEffort, RcNotice, RcRequest, RcTokens } from '../types'
-import { contextGauge, effortSteps, effortText } from './icons'
+import type { RcCaps, RcContext, RcEffort, RcNotice, RcParts, RcRequest, RcTokens } from '../types'
+import { contextBar, effortText, effortTrack, toneColor } from './icons'
 import {
   EFFORTS,
+  EFFORT_COLOR,
   EFFORT_LABEL,
   EFFORT_SHORT,
   capsFrom,
   contextTone,
   effortName,
   formatTokens,
-  goalDraft,
+  groupContext,
   isEffort,
   judgeEffort,
   judgeModel,
@@ -34,6 +35,9 @@ const modelReq = atom({ plugin: 'router-models', key: 'modelReq' } as const, nul
 const effortReq = atom({ plugin: 'router-models', key: 'effortReq' } as const, null)
 const confirmClear = atom({ plugin: 'router-models', key: 'confirmClear' } as const, false)
 const notice = atom({ plugin: 'router-models', key: 'notice' } as const, null)
+const parts = atom({ plugin: 'router-models', key: 'parts' } as const, null)
+const effortPreview = atom({ plugin: 'router-models', key: 'effortPreview' } as const, null)
+const trackFailed = atom({ plugin: 'router-models', key: 'trackFailed' } as const, false)
 
 type $ = EngineInterface
 
@@ -65,6 +69,19 @@ async function refreshContext($: $): Promise<void> {
     await update($, context, () => toContext(usage.context))
   } catch {
     await update($, context, () => null)
+  }
+  await refreshParts($)
+}
+
+/** Divide o uso por categoria (estimativa local do /context, sem requisição). */
+async function refreshParts($: $): Promise<void> {
+  try {
+    const usage = await $.session.usage({ breakdown: 'summary' })
+    const categories = usage.context.breakdown?.categories
+    const grouped: RcParts | null = categories ? groupContext(categories) : null
+    await update($, parts, () => grouped)
+  } catch {
+    await update($, parts, () => null)
   }
 }
 
@@ -127,16 +144,19 @@ async function selectEffort($: $, level: RcEffort): Promise<void> {
     await say($, { kind: 'error', text: 'Controle de esforço indisponível: o aplicativo não oferece /effort nesta sessão.' })
     return
   }
+  await update($, effortPreview, () => level)
   await update($, effortReq, () => mk(level, 'sending'))
   try {
     await $.command.run({ command: 'effort', args: level })
   } catch (err) {
+    await update($, effortPreview, () => null)
     await update($, effortReq, () => mk(level, 'failed', message(err)))
     await say($, { kind: 'error', text: `Não foi possível trocar o esforço: ${message(err)}` })
     return
   }
   // O esforço efetivo só é conhecido na próxima requisição (turn.step).
   await update($, effortReq, () => mk(level, 'pending', 'aguardando a próxima requisição'))
+  await update($, effortPreview, () => null)
   await say($, null)
 }
 
@@ -171,16 +191,6 @@ async function runClear($: $): Promise<void> {
   }
 }
 
-async function openGoal($: $): Promise<void> {
-  try {
-    const box = await $.prompt.read()
-    const draft = goalDraft(box.text)
-    await $.prompt.fill({ text: draft.text, mode: 'replace', cursor: draft.cursor })
-  } catch (err) {
-    await say($, { kind: 'error', text: `Não foi possível abrir /goal: ${message(err)}` })
-  }
-}
-
 export const register: Register = (on, options) => {
   const override = typeof options.models === 'string' ? options.models : ''
 
@@ -200,6 +210,7 @@ export const register: Register = (on, options) => {
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('context')) {
       await update($, context, () => toContext(e.context))
+      await refreshParts($)
     }
     return next(e)
   })
@@ -209,6 +220,7 @@ export const register: Register = (on, options) => {
       // Nova conversa: contadores recomeçam; o contexto volta a "aguardando".
       await update($, tokens, () => null)
       await update($, context, () => null)
+      await update($, parts, () => null)
       await update($, confirmClear, () => false)
     }
     return next(e)
@@ -242,6 +254,31 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // ---- Trilha de esforço (Client) --------------------------------------------
+
+  on('ui.message', async ($, e, next) => {
+    if (e.element !== 'effort-track') return next(e)
+    const data = e.data as { preview?: unknown; level?: unknown } | null
+    const pick = (v: unknown): RcEffort | null =>
+      typeof v === 'number' && Number.isInteger(v) ? (EFFORTS[v] ?? null) : null
+    if (data && 'preview' in data) {
+      const level = pick(data.preview)
+      await update($, effortPreview, () => level)
+    } else if (data && 'level' in data) {
+      const level = pick(data.level)
+      if (level !== null) await selectEffort($, level)
+      else await update($, effortPreview, () => null)
+    }
+    return next(e)
+  })
+
+  on('ui.fault', async ($, e, next) => {
+    // Se a camada de toque falhar, a trilha passa a usar os botões − e +.
+    await update($, trackFailed, () => true)
+    await update($, effortPreview, () => null)
+    return next(e)
+  })
+
   // ---- Desenho -------------------------------------------------------------
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -249,39 +286,41 @@ export const register: Register = (on, options) => {
 
     const c: RcCaps | null = await read($, caps)
     const ctx: RcContext | null = await read($, context)
+    const pt: RcParts | null = await read($, parts)
     const tk: RcTokens | null = await read($, tokens)
     const model: string | null = await read($, currentModel)
     const effRaw: string | null = await read($, effectiveEffort)
+    const preview: string | null = await read($, effortPreview)
+    const failedTrack: boolean = await read($, trackFailed)
     const mReq: RcRequest | null = await read($, modelReq)
     const eReq: RcRequest | null = await read($, effortReq)
     const askClear: boolean = await read($, confirmClear)
     const note: RcNotice | null = await read($, notice)
 
     const isDesktop = e.surface === 'desktop'
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const svgTable = isDesktop ? $.ui.resolve(e) : null
-    const Svg = svgTable !== null && 'Svg' in svgTable ? svgTable.Svg : null
-    const narrow = e.props.bodyColumns < 100
+    const table = $.ui.resolve(e)
+    const { Box, Text, Button } = table
+    const Svg = isDesktop && 'Svg' in table ? table.Svg : null
+    const Client = isDesktop && 'Client' in table ? table.Client : null
+    const narrow = e.props.bodyColumns < 90
     const isWorking = e.props.isWorking
-    const eff: RcEffort | null = isEffort(effRaw) ? effRaw : null
 
-    // Bloco 1: contexto e modelos
+    const eff: RcEffort | null = isEffort(effRaw) ? effRaw : null
+    // Durante o arrasto ou o envio, a trilha mostra o nível pedido.
+    const shown: RcEffort | null = isEffort(preview) ? preview : eff
+
+    // ---- Bloco 1: contexto em cima dos modelos
     const percent = ctx?.percent
     const tone = contextTone(percent)
     const ctxKnown = percent !== undefined
-    const ctxText = ctxKnown
-      ? `${Math.round(percent)}% · ${formatTokens(ctx?.tokens)}/${formatTokens(ctx?.window)}`
-      : ctx?.window !== undefined
-        ? `indisponível · limite ${formatTokens(ctx.window)}`
-        : 'indisponível'
     const ctxAlt = ctxKnown
       ? `Contexto: ${Math.round(percent)}% usado, ${formatTokens(ctx?.tokens)} de ${formatTokens(ctx?.window)} tokens`
       : 'Contexto: indisponível até a primeira resposta'
 
-    const models = c?.models ?? []
-    const modelButtons = models.map(m => {
+    const modelButtons = (c?.models ?? []).map(m => {
       const isCurrent = matchesModel(m.id, model)
-      const isTarget = mReq !== null && mReq.target === m.id && (mReq.status === 'sending' || mReq.status === 'pending')
+      const isTarget =
+        mReq !== null && mReq.target === m.id && (mReq.status === 'sending' || mReq.status === 'pending')
       return (
         <Button
           key={`model-${m.id}`}
@@ -294,105 +333,153 @@ export const register: Register = (on, options) => {
     })
 
     const block1 = (
-      <Box key="rc-block-context" flexDirection="column" gap={0}>
+      <Box key="rc-block-context" flexDirection="column" rowGap={1}>
         <Box flexDirection="row" alignItems="center" columnGap={1}>
-          <Text weight="semibold">Router de Modelos</Text>
-          <Text dimColor>· Contexto</Text>
+          <Text dimColor>Contexto</Text>
           {Svg !== null ? (
-            <Svg source={contextGauge(percent, tone)} alt={ctxAlt} width={132} height={10} />
+            <Svg source={contextBar(percent, tone, pt, ctx?.window)} alt={ctxAlt} width={130} height={8} />
           ) : (
             <Text color={tone}>{textBar(percent)}</Text>
           )}
-          <Text tabular color={ctxKnown ? tone : undefined} dimColor={!ctxKnown}>
-            {ctxText}
+          <Text tabular weight="semibold" color={ctxKnown ? toneColor(tone) : undefined} dimColor={!ctxKnown}>
+            {ctxKnown ? `${Math.round(percent)}%` : 'indisponível'}
           </Text>
         </Box>
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} rowGap={1}>
           {c?.hasModel === false ? <Text dimColor>Modelos: /model indisponível</Text> : modelButtons}
         </Box>
       </Box>
     )
 
-    // Bloco 2: tokens e esforço
-    const tokensText =
-      tk === null
-        ? 'Tokens: aguardando a 1ª resposta'
-        : `Tokens ↓ ${formatTokens(tk.input)} entrada · ↑ ${formatTokens(tk.output)} saída`
-    const effortButtons = EFFORTS.map(level => {
-      const isEff = eff === level
-      const isTarget =
-        eReq !== null && eReq.target === level && (eReq.status === 'sending' || eReq.status === 'pending')
-      const label = narrow ? EFFORT_SHORT[level] : EFFORT_LABEL[level]
-      return (
-        <Button
-          key={`effort-${level}`}
-          label={isTarget ? `${label}…` : label}
-          variant={isEff ? 'primary' : 'secondary'}
-          dimColor={!c?.hasEffort}
-          onPress={() => selectEffort($, level)}
-        />
+    // ---- Bloco 2: tokens em cima do esforço
+    const pill = (
+      <Box
+        key="rc-tokens"
+        flexDirection="row"
+        alignItems="center"
+        columnGap={1}
+        borderStyle="round"
+        borderColor="subtle"
+        paddingX={1}
+      >
+        <Text tabular weight="semibold">
+          {ctx?.window !== undefined ? `${formatTokens(ctx.tokens)}/${formatTokens(ctx.window)}` : 'indisponível'}
+        </Text>
+        <Text dimColor>|</Text>
+        <Text tabular color="#34c38f">{`↓${formatTokens(tk?.input)}`}</Text>
+        <Text dimColor>|</Text>
+        <Text tabular color="#ef5350">{`↑${formatTokens(tk?.output)}`}</Text>
+      </Box>
+    )
+
+    const levelName = shown === null ? effortName(effRaw) : EFFORT_LABEL[shown]
+    const levelColor = shown === null ? undefined : EFFORT_COLOR[shown]
+    const trackAlt = `Esforço: ${levelName}. Níveis: ${EFFORTS.map(l => EFFORT_LABEL[l]).join(', ')}`
+    const idx = shown === null ? -1 : EFFORTS.indexOf(shown)
+    const stepTo = (d: number) => {
+      const base = idx === -1 ? 2 : idx
+      const target = EFFORTS[Math.max(0, Math.min(EFFORTS.length - 1, base + d))]
+      return target ?? 'high'
+    }
+
+    let effortControl
+    if (c?.hasEffort === false) {
+      effortControl = <Text dimColor>(/effort indisponível)</Text>
+    } else if (Svg !== null && Client !== null && !failedTrack) {
+      // Desenho da trilha com a camada de toque transparente por cima.
+      effortControl = (
+        <Box key="rc-track" position="relative" width={15}>
+          <Svg source={effortTrack(shown)} alt={trackAlt} width={120} height={22} />
+          <Box position="absolute" top={0} left={0} width="100%" height="100%">
+            <Client key="effort-track" module="./effort-track.tsx" props={null} width="100%" height="100%" />
+          </Box>
+        </Box>
       )
-    })
-    const effAlt = `Esforço efetivo: ${effortName(effRaw)}`
+    } else if (Svg !== null) {
+      effortControl = (
+        <Box flexDirection="row" alignItems="center" columnGap={1}>
+          <Button key="effort-down" label="−" onPress={() => selectEffort($, stepTo(-1))} />
+          <Svg source={effortTrack(shown)} alt={trackAlt} width={120} height={22} />
+          <Button key="effort-up" label="+" onPress={() => selectEffort($, stepTo(1))} />
+        </Box>
+      )
+    } else {
+      effortControl = (
+        <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
+          <Text color={levelColor}>{effortText(shown)}</Text>
+          {EFFORTS.map(level => (
+            <Button
+              key={`effort-${level}`}
+              label={narrow ? EFFORT_SHORT[level] : EFFORT_LABEL[level]}
+              variant={eff === level ? 'primary' : 'secondary'}
+              onPress={() => selectEffort($, level)}
+            />
+          ))}
+        </Box>
+      )
+    }
 
     const block2 = (
-      <Box key="rc-block-tokens" flexDirection="column" gap={0}>
-        <Text tabular dimColor={tk === null}>
-          {tokensText}
-        </Text>
+      <Box key="rc-block-tokens" flexDirection="column" rowGap={1}>
+        <Box flexDirection="row">{pill}</Box>
         <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={1}>
           <Text dimColor>Esforço</Text>
-          {Svg !== null ? (
-            <Svg source={effortSteps(eff)} alt={effAlt} width={44} height={16} />
-          ) : (
-            <Text>{effortText(eff)}</Text>
-          )}
-          <Text weight="semibold">{effortName(effRaw)}</Text>
-          {c?.hasEffort === false ? <Text dimColor>(/effort indisponível)</Text> : effortButtons}
+          <Text key="rc-effort-name" weight="semibold" color={levelColor} dimColor={shown === null}>
+            {levelName}
+          </Text>
+          {effortControl}
         </Box>
       </Box>
     )
 
-    // Bloco 3: ações
-    const block3 = askClear ? (
-      <Box key="rc-block-actions" flexDirection="column" gap={0}>
-        <Text color="error">Limpar a conversa atual?</Text>
-        <Box flexDirection="row" columnGap={1}>
-          <Button key="clear-confirm" label="Confirmar limpeza" variant="primary" onPress={() => runClear($)} />
-          <Button key="clear-cancel" label="Cancelar" onPress={() => update($, confirmClear, () => false)} />
-        </Box>
+    // ---- Bloco 3: ações (Limpar em cima, Compactar embaixo)
+    const clearRow = askClear ? (
+      <Box flexDirection="row" columnGap={1} alignItems="center">
+        <Button key="clear-confirm" label="Confirmar limpeza" onPress={() => runClear($)} />
+        <Button key="clear-cancel" label="Cancelar" onPress={() => update($, confirmClear, () => false)} />
       </Box>
-    ) : (
-      <Box key="rc-block-actions" flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+    ) : c?.hasClear ? (
+      <Button key="clear" label="Limpar" onPress={() => update($, confirmClear, () => true)} />
+    ) : null
+
+    const block3 = (
+      <Box
+        key="rc-block-actions"
+        flexDirection="column"
+        alignItems={narrow ? 'flex-start' : 'flex-end'}
+        rowGap={1}
+      >
+        {clearRow}
         <Button key="compact" label="Compactar" onPress={() => runCompact($, isWorking)} />
-        {c?.hasClear ? (
-          <Button key="clear" label="Limpar" onPress={() => update($, confirmClear, () => true)} />
-        ) : null}
-        {c?.hasGoal ? <Button key="goal" label="Meta" onPress={() => openGoal($)} /> : null}
       </Box>
     )
 
     const status = [
-      requestText('Modelo', mReq, mReq ? modelLabel(mReq.target) : ''),
-      requestText('Esforço', eReq, eReq ? effortName(eReq.target) : ''),
+      mReq?.status === 'confirmed' ? null : requestText('Modelo', mReq, mReq ? modelLabel(mReq.target) : ''),
+      eReq?.status === 'confirmed' ? null : requestText('Esforço', eReq, eReq ? effortName(eReq.target) : ''),
       note?.text ?? null,
     ].filter((s): s is string => s !== null)
 
     return (
-      <Box key="rc-root" flexDirection="column" gap={0}>
+      <Box key="rc-root" flexDirection="column" rowGap={0}>
         <Box
           flexDirection={narrow ? 'column' : 'row'}
           flexWrap="wrap"
           justifyContent="space-between"
+          alignItems="flex-start"
           columnGap={3}
-          rowGap={0}
+          rowGap={1}
         >
           {block1}
           {block2}
           {block3}
         </Box>
         {status.length > 0 ? (
-          <Text dimColor={note?.kind !== 'error'} color={note?.kind === 'error' ? 'error' : undefined} wrap="truncate-end">
+          <Text
+            dimColor={note?.kind !== 'error'}
+            color={note?.kind === 'error' ? 'error' : undefined}
+            wrap="truncate-end"
+          >
             {status.join(' · ')}
           </Text>
         ) : null}

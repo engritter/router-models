@@ -94,9 +94,10 @@ test('sem dados de contexto mostra "indisponível", nunca 0%, em todas as superf
   await $.session.start(start)
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...band(), surface })
-    expect(await ui.find({ type: 'Text', text: /^Router de Modelos$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /indisponível · limite 200k/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /aguardando a 1ª resposta/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^indisponível$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^—\/200k$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^↓—$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^↑—$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^0%/ })).toBeUndefined()
     await ui.unmount()
   }
@@ -107,7 +108,8 @@ test('mostra percentual e usados/limite quando o aplicativo informa', async ($, 
   await $.session.start(start)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...band(), surface })
-    expect(await ui.find({ type: 'Text', text: /42% · 84k\/200k/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^42%$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^84k\/200k$/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -119,7 +121,9 @@ test('troca de modelo roda /model e só confirma quando o aplicativo reporta o n
   const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
   await ui.press({ key: 'model-claude-sonnet-5-5' })
   expect(w.runs).toEqual([{ command: 'model', args: 'claude-sonnet-5-5' }])
-  expect(await ui.find({ type: 'Text', text: /Modelo: Sonnet 5\.5 confirmado/ })).toBeDefined()
+  expect(w.model).toBe('claude-sonnet-5-5')
+  // Confirmada, a troca não deixa aviso pendente na barra.
+  expect(await ui.find({ type: 'Text', text: /Modelo:/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -148,12 +152,13 @@ test('esforço: pendente após /effort, confirmado pela próxima requisição', 
   const w = world()
   app(on, w)
   await $.session.start(start)
-  const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   await ui.press({ key: 'effort-max' })
   expect(w.runs).toEqual([{ command: 'effort', args: 'max' }])
-  expect(await ui.find({ type: 'Text', text: /Esforço: Máximo solicitado, aguardando confirmação/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Esforço: Max solicitado, aguardando confirmação/ })).toBeDefined()
   await step($, 'claude-opus-5-5', 'max')
-  expect(await ui.find({ type: 'Text', text: /Esforço: Máximo confirmado/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Esforço:/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^Max$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -163,8 +168,8 @@ test('esforço ajustado pelo aplicativo mostra o valor efetivo', async ($, on) =
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
   await ui.press({ key: 'effort-max' })
   await step($, 'claude-opus-5-5', 'high')
-  expect(await ui.find({ type: 'Text', text: /falha ao aplicar Máximo \(efetivo: Alto/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^Alto$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /falha ao aplicar Max \(efetivo: High/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^High$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -184,11 +189,12 @@ test('contadores de tokens somam entrada (com cache) e saída do loop principal 
     answer: 'ok', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer', usage, agentId: 'a1',
   })
   const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /Tokens ↓ 12,3k entrada · ↑ 1,5k saída/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^↓12,3k$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^↑1,5k$/ })).toBeDefined()
   await ui.unmount()
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
   const after = await $.ui.mount({ ...band(), surface: 'desktop' })
-  expect(await after.find({ type: 'Text', text: /aguardando a 1ª resposta/ })).toBeDefined()
+  expect(await after.find({ type: 'Text', text: /^↓—$/ })).toBeDefined()
   await after.unmount()
 })
 
@@ -199,23 +205,12 @@ test('Limpar exige confirmação; Cancelar não roda nada', async ($, on) => {
   const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
   await ui.press({ key: 'clear' })
   expect(w.runs).toEqual([])
-  expect(await ui.find({ type: 'Text', text: /Limpar a conversa atual\?/ })).toBeDefined()
+  expect((await ui.find({ key: 'clear-confirm' }))?.text).toBe('Confirmar limpeza')
   await ui.press({ key: 'clear-cancel' })
   expect(w.runs).toEqual([])
   await ui.press({ key: 'clear' })
   await ui.press({ key: 'clear-confirm' })
   expect(w.runs).toEqual([{ command: 'clear', args: '' }])
-  await ui.unmount()
-})
-
-test('Meta preserva o texto já digitado', async ($, on) => {
-  const w = world({ draft: 'revisar a norma NR-12' })
-  app(on, w)
-  await $.session.start(start)
-  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
-  await ui.press({ key: 'goal' })
-  expect(w.fills).toEqual([{ text: '/goal revisar a norma NR-12', cursor: '/goal revisar a norma NR-12'.length }])
-  expect(w.runs).toEqual([])
   await ui.unmount()
 })
 
@@ -246,6 +241,46 @@ test('em largura estreita os rótulos de esforço encurtam', async ($, on) => {
   app(on, world())
   await $.session.start(start)
   const ui = await $.ui.mount({ ...band(60), surface: 'terminal' })
-  expect((await ui.find({ key: 'effort-max' }))?.text).toBe('Máx')
+  expect((await ui.find({ key: 'effort-max' }))?.text).toBe('Max')
+  await ui.unmount()
+})
+
+test('no desktop, clicar no último ponto da trilha roda /effort max', async ($, on) => {
+  const w = world()
+  app(on, w)
+  await $.session.start(start)
+  const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
+  await ui.resize({ columns: 15, rows: 1, in: 'effort-track' })
+  await ui.pointer({ type: 'down', x: 14, y: 0, button: 'left', in: 'effort-track' })
+  await ui.pointer({ type: 'up', x: 14, y: 0, button: 'left', in: 'effort-track' })
+  expect(w.runs).toEqual([{ command: 'effort', args: 'max' }])
+  await ui.unmount()
+})
+
+test('arrastar mostra a prévia do nível e só envia ao soltar', async ($, on) => {
+  const w = world()
+  app(on, w)
+  await $.session.start(start)
+  const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
+  await ui.post({ preview: 1 }, { in: 'effort-track' })
+  expect(await ui.find({ type: 'Text', text: /^Medium$/ })).toBeDefined()
+  expect(w.runs).toEqual([])
+  await ui.post({ level: 0 }, { in: 'effort-track' })
+  expect(w.runs).toEqual([{ command: 'effort', args: 'low' }])
+  await ui.unmount()
+})
+
+test('modelos aparecem com nomes curtos, do mais forte ao mais leve', async ($, on) => {
+  app(on, world())
+  await $.session.start(start)
+  const ui = await $.ui.mount({ ...band(), surface: 'desktop' })
+  for (const [id, label] of [
+    ['claude-fable-5-2', 'Fable'],
+    ['claude-opus-5-5', 'Opus'],
+    ['claude-sonnet-5-5', 'Sonnet'],
+    ['claude-haiku-5-5', 'Haiku'],
+  ]) {
+    expect((await ui.find({ key: `model-${id}` }))?.text).toBe(label)
+  }
   await ui.unmount()
 })

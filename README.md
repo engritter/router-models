@@ -5,12 +5,12 @@ Nome técnico (plugin e repositório): `router-models` · https://github.com/eng
 Plugin para o **Claude Code** que adiciona uma barra compacta acima da caixa de
 mensagem. A barra mostra o uso do contexto, troca o modelo e o nível de esforço
 (com confirmação do próprio aplicativo), conta os tokens de entrada e saída e
-oferece as ações Compactar, Limpar e Meta.
+oferece as ações Limpar e Compactar.
 
 Autor: Safety Engenharia · Licença: MIT · Versão: 0.1.0
 
 > **Estado:** pronto para revisão. O plugin foi validado (`claude plugin validate`)
-> e testado (`claude plugin test`, 22 testes) no Claude Code 2.1.325, mas **ainda
+> e testado (`claude plugin test`, 26 testes) no Claude Code 2.1.325, mas **ainda
 > não foi instalado nem usado num app real**. Faça um teste manual antes de publicar
 > (veja [Teste manual sugerido](#teste-manual-sugerido)).
 
@@ -20,9 +20,9 @@ A barra tem três blocos. Em telas estreitas, eles ficam um embaixo do outro.
 
 | Bloco | Conteúdo |
 | --- | --- |
-| 1. Contexto e modelos | Título **Router de Modelos** e medidor do contexto com percentual e `usados/limite` (ex.: `42% · 84k/200k`), na cor do estado: verde abaixo de 65%, âmbar até 85%, vermelho acima. Abaixo dele, um botão por modelo; o modelo ativo aparece destacado. |
-| 2. Tokens e esforço | `Tokens ↓ entrada · ↑ saída`, somados das respostas do loop principal. Medidor de esforço em degraus, o nome do nível **efetivo** e um botão por nível (Baixo, Médio, Alto, Extra, Máximo). |
-| 3. Ações | **Compactar** (`/compact`), **Limpar** (`/clear`, pede confirmação) e **Meta** (`/goal`, mantém o texto já digitado). |
+| 1. Contexto em cima dos modelos | Barra arredondada colorida por categoria (instruções em azul-claro, ferramentas em roxo, conversa na cor do estado e reserva de compactação em cinza na ponta) com o percentual usado. A conversa fica verde abaixo de 65%, âmbar até 85% e vermelha acima. Embaixo, os botões **Fable**, **Opus**, **Sonnet** e **Haiku**, do mais forte ao mais leve; o ativo aparece destacado. |
+| 2. Tokens em cima do esforço | Pílula com o uso da janela (ex.: `215k/1M`), **↓ entrada** em verde e **↑ saída** em vermelho. Embaixo, `Esforço` com o nível colorido ao lado (ex.: *Esforço Medium*) e a trilha: segure a bolinha e arraste, ou clique num ponto (Low, Medium, High, X-High, Max). Cada nível tem um ponto e uma cor: verde, azul, roxo, âmbar e vermelho. |
+| 3. Ações, à direita | **Limpar** em cima e **Compactar** embaixo. |
 
 Comportamentos:
 
@@ -39,14 +39,12 @@ Comportamentos:
   usa esse parâmetro.
 - **Limpar** pede confirmação na própria barra (*Confirmar limpeza* /
   *Cancelar*). Nada é apagado no primeiro clique.
-- **Meta** coloca `/goal ` antes do que já está escrito na caixa e deixa o
-  cursor no fim. Não envia nada sozinho e não duplica o prefixo.
 - **Controles que o aplicativo não oferece ficam indisponíveis.** Na abertura da
-  sessão, o plugin lê `$.command.list()`. Se `/model`, `/effort`, `/clear` ou
-  `/goal` não existirem, o controle correspondente avisa que está indisponível ou
+  sessão, o plugin lê `$.command.list()`. Se `/model`, `/effort` ou `/clear` não
+  existirem, o controle correspondente avisa que está indisponível ou
   some. O plugin não tenta contornar a ausência.
-- **Gráficos próprios.** No desktop, o medidor de contexto e os degraus de esforço
-  são SVG gerados pelo plugin. No terminal, são barras de texto (`▰▱`, `▮▯`).
+- **Gráficos próprios.** No desktop, a barra de contexto e a trilha de esforço
+  são SVG gerados pelo plugin; uma camada de toque (`hooks/effort-track.tsx`) recebe o clique e o arrasto. Se ela falhar, a trilha ganha botões − e +. No terminal, são barras de texto (`▰▱`, `●━·`) e botões por nível.
 - **Acessibilidade.** Todos os controles são botões nativos da superfície, com
   rótulos por extenso. Os SVGs têm texto alternativo (`alt`). Os estados não
   dependem só de cor: há sempre texto.
@@ -104,7 +102,6 @@ Ela aparece no `/config` depois da instalação.
 - **Compactar** resume a conversa. Se uma resposta estiver em andamento, o
   comando entra na fila do aplicativo.
 - **Limpar** → **Confirmar limpeza** inicia uma conversa nova e zera os contadores.
-- **Meta** prepara `/goal <seu texto>` na caixa. Complete e pressione Enter.
 
 ## Limitações
 
@@ -157,8 +154,9 @@ router-models/
 ├── hooks/
 │   ├── hooks.json         aponta o módulo de hooks
 │   ├── register.tsx       eventos, ações e desenho da barra
-│   ├── logic.ts           funções puras (formatação, verificação, rascunho do /goal)
-│   └── icons.ts           SVGs próprios e equivalentes em texto
+│   ├── logic.ts           funções puras (formatação, verificação, trilha)
+│   ├── icons.ts           SVGs próprios e equivalentes em texto
+│   └── effort-track.tsx   camada de toque da trilha de esforço (desktop)
 ├── types/index.d.ts       contrato do estado ($.state)
 ├── tests/                 testes do kit oficial `claude-code/testing`
 ├── tsconfig.json
@@ -176,7 +174,7 @@ claude plugin test .
 Os testes simulam o aplicativo abaixo do plugin e cobrem: contexto indisponível
 versus informado, troca de modelo confirmada, pendente e com falha, esforço
 confirmado e ajustado, contagem de tokens (subagentes excluídos, zerada no
-`/clear`), confirmação do Limpar, Meta preservando o texto, Compactar, comandos
+`/clear`), confirmação do Limpar, Compactar, comandos
 ausentes e layout estreito, no terminal, desktop, VS Code e mobile.
 
 ### Teste manual sugerido
@@ -187,7 +185,6 @@ ausentes e layout estreito, no terminal, desktop, VS Code e mobile.
    como indisponíveis.
 3. Troque o modelo e o esforço e confira os estados *solicitado* → *confirmado*.
 4. Teste o Limpar com Cancelar e depois com Confirmar.
-5. Digite um texto e clique em Meta.
 
 ## Comparação com a referência
 
@@ -196,19 +193,19 @@ A implementação é original: nenhum código, imagem ou SVG foi copiado.
 
 | Recurso | Referência | Router de Modelos |
 | --- | --- | --- |
-| Barra de contexto com % | Sim, segmentada por categoria | Sim, com marcações e limiar de alerta; mostra também `usados/limite` |
+| Barra de contexto com % | Sim, segmentada por categoria | Sim, segmentada por categoria; `usados/limite` na pílula de tokens |
 | Tokens de entrada/saída | Sim | Sim; `—` até a 1ª resposta, zera no `/clear` |
 | Seleção de modelo | 4 botões fixos | Lista do `/config` quando exposta, senão reserva, ou a opção `models` |
-| Controle de esforço | Trilha arrastável (módulo `Client`) e −/+ | Botões por nível e medidor em degraus; mostra o valor **efetivo** |
+| Controle de esforço | Trilha arrastável (módulo `Client`) e −/+ | Trilha arrastável própria (módulo `Client`), −/+ se ela falhar; mostra o valor **efetivo** |
 | Pendente vs. confirmado | Pedido otimista, apagado no fim do turno | Estados enviando, pendente, confirmado e falha, verificados pelo app |
 | Sem `/model` ou `/effort` | Força o modelo/esforço em cada requisição | Desativa o controle e avisa; não força nada por baixo |
 | Compactar | Sim | Sim |
 | Limpar | Imediato | **Com confirmação** |
-| Meta (`/goal`) | Substitui a caixa por `/goal ` | **Preserva o texto já digitado** |
+| Meta (`/goal`) | Substitui a caixa por `/goal ` | Não incluído |
 | Oculta a barra nativa | Sim | Não (limitação 7) |
 | Custo | Não exibido | Não exibido |
 | Licença | Nenhuma declarada | MIT |
-| Testes | Não | 22 testes com o kit oficial |
+| Testes | Não | 26 testes com o kit oficial |
 
 ## Licença
 
