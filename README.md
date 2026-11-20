@@ -1,6 +1,6 @@
 # Router de Modelos
 
-Nome técnico (plugin, pasta e repositório): `router-modelos`.
+Nome técnico do plugin: `router-modelos` · Repositório: `engritter/router-models`.
 
 Plugin para o **Claude Code** que adiciona uma barra compacta acima da caixa de
 mensagem. A barra mostra o uso do contexto, troca o modelo e o nível de esforço
@@ -64,12 +64,12 @@ Comportamentos:
 
 ## Instalação
 
-Repositório: https://github.com/engritter/router-modelos
+Repositório: https://github.com/engritter/router-models
 
 Num terminal com sessão do Claude Code aberta:
 
 ```
-/plugin install router-modelos --marketplace engritter/router-modelos
+/plugin install router-modelos --marketplace engritter/router-models
 ```
 
 Responda `y` para adicionar o marketplace e escolha o escopo (usuário é o primeiro).
@@ -77,11 +77,11 @@ Responda `y` para adicionar o marketplace e escolha o escopo (usuário é o prim
 Pelo shell:
 
 ```bash
-claude plugin install router-modelos --marketplace engritter/router-modelos
+claude plugin install router-modelos --marketplace engritter/router-models
 ```
 
 No **app desktop**, onde `/plugin` não roda: clique em **+** ao lado da caixa de
-mensagem → **Plugins** → **Add marketplace** com `engritter/router-modelos`
+mensagem → **Plugins** → **Add marketplace** com `engritter/router-models`
 → **Add plugin**.
 
 Para testar a partir de uma pasta local, sem instalar:

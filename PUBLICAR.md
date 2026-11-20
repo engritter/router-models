@@ -1,7 +1,7 @@
 # Como publicar no GitHub
 
 Passo a passo para publicar o projeto.
-Conta do GitHub: `engritter`. Repositório público: `engritter/router-modelos`.
+Conta do GitHub: `engritter`. Repositório público: `engritter/router-models`.
 
 ## 1. Revisão antes do primeiro commit
 
@@ -31,7 +31,7 @@ Revise a saída do `git status` antes do commit.
 
 ```bash
 gh auth status
-gh repo create engritter/router-modelos --public --source . --push
+gh repo create engritter/router-models --public --source . --push
 ```
 
 Com `--public`, qualquer pessoa pode ler o código e instalar o plugin. Para
@@ -40,12 +40,12 @@ essa pessoa precisa ter credenciais Git para github.com na própria máquina.
 
 ## 3b. Enviar sem o `gh`
 
-1. Em github.com, crie um repositório vazio chamado `router-modelos`, sem
+1. Em github.com, crie um repositório vazio chamado `router-models`, sem
    README, licença ou .gitignore.
 2. Depois rode:
 
 ```bash
-git remote add origin https://github.com/engritter/router-modelos.git
+git remote add origin https://github.com/engritter/router-models.git
 git push -u origin main
 ```
 
