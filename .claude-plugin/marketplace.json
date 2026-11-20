@@ -1,0 +1,6 @@
+{
+  "name": "router-modelos",
+  "owner": { "name": "Safety Engenharia" },
+  "description": "Marketplace do Router de Modelos: barra de contexto, modelo, esforço, tokens e ações para o Claude Code.",
+  "plugins": [{ "name": "router-modelos", "source": "./" }]
+}

@@ -1,0 +1,39 @@
+# Tipos gerados pelo Claude Code ao carregar o plugin localmente
+.claude-plugin/types/
+.mcpb-cache/
+
+# Credenciais e configuração local
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.claude/settings.local.json
+settings.local.json
+credentials*.json
+secrets*.json
+
+# Dependências e artefatos
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.plugin
+*.zip
+
+# Logs e arquivos temporários
+*.log
+npm-debug.log*
+*.tmp
+*~
+*.swp
+
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
