@@ -1,6 +1,6 @@
 # Router de Modelos
 
-Nome técnico do plugin: `router-modelos` · Repositório: `engritter/router-models`.
+Nome técnico (plugin e repositório): `router-models` · https://github.com/engritter/router-models
 
 Plugin para o **Claude Code** que adiciona uma barra compacta acima da caixa de
 mensagem. A barra mostra o uso do contexto, troca o modelo e o nível de esforço
@@ -69,7 +69,7 @@ Repositório: https://github.com/engritter/router-models
 Num terminal com sessão do Claude Code aberta:
 
 ```
-/plugin install router-modelos --marketplace engritter/router-models
+/plugin install router-models --marketplace engritter/router-models
 ```
 
 Responda `y` para adicionar o marketplace e escolha o escopo (usuário é o primeiro).
@@ -77,7 +77,7 @@ Responda `y` para adicionar o marketplace e escolha o escopo (usuário é o prim
 Pelo shell:
 
 ```bash
-claude plugin install router-modelos --marketplace engritter/router-models
+claude plugin install router-models --marketplace engritter/router-models
 ```
 
 No **app desktop**, onde `/plugin` não roda: clique em **+** ao lado da caixa de
@@ -87,7 +87,7 @@ mensagem → **Plugins** → **Add marketplace** com `engritter/router-models`
 Para testar a partir de uma pasta local, sem instalar:
 
 ```bash
-claude --plugin-dir ./router-modelos
+claude --plugin-dir ./router-models
 ```
 
 ### Configuração opcional
@@ -140,17 +140,17 @@ Todas vêm da API pública desta build. Nenhuma integração foi inventada.
 ## Desinstalação
 
 ```
-/plugin uninstall router-modelos
+/plugin uninstall router-models
 ```
 
-ou, pelo shell, `claude plugin uninstall router-modelos`. No app desktop,
+ou, pelo shell, `claude plugin uninstall router-models`. No app desktop,
 use **+** → **Plugins** e remova o plugin. Para remover também o marketplace:
-`claude plugin marketplace remove router-modelos`.
+`claude plugin marketplace remove router-models`.
 
 ## Desenvolvimento
 
 ```
-router-modelos/
+router-models/
 ├── .claude-plugin/
 │   ├── plugin.json        manifesto (nome, versão, autor, opção `models`)
 │   └── marketplace.json   permite instalar direto do repositório

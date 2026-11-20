@@ -1,5 +1,5 @@
 {
-  "name": "router-modelos",
+  "name": "router-models",
   "version": "0.1.0",
   "description": "Router de Modelos: barra acima da caixa de mensagem: contexto, troca de modelo e esforço verificadas, tokens e ações Compactar, Limpar e Meta.",
   "author": { "name": "Safety Engenharia" },

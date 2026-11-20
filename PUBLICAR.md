@@ -15,13 +15,13 @@ plugin localmente) não será enviado. O `.gitignore` já exclui essa pasta.
 
 ## 2. Criar o repositório local
 
-Na pasta `router-modelos`:
+Na pasta `router-models`:
 
 ```bash
 git init
 git add .
 git status
-git commit -m "router-modelos 0.1.0"
+git commit -m "router-models 0.1.0"
 git branch -M main
 ```
 

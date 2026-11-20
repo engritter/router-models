@@ -1,4 +1,4 @@
-// Router de Modelos (router-modelos): barra acima da caixa de mensagem com contexto,
+// Router de Modelos (router-models): barra acima da caixa de mensagem com contexto,
 // modelos, tokens, esforço e ações. Usa apenas a API de function hooks
 // declarada pelo Claude Code (verificada na build 2.1.325).
 import { atom, read, update } from 'claude-code'
@@ -24,16 +24,16 @@ import {
   textBar,
 } from './logic'
 
-const caps = atom({ plugin: 'router-modelos', key: 'caps' } as const, null)
-const context = atom({ plugin: 'router-modelos', key: 'context' } as const, null)
-const tokens = atom({ plugin: 'router-modelos', key: 'tokens' } as const, null)
-const currentModel = atom({ plugin: 'router-modelos', key: 'currentModel' } as const, null)
-const apiModel = atom({ plugin: 'router-modelos', key: 'apiModel' } as const, null)
-const effectiveEffort = atom({ plugin: 'router-modelos', key: 'effectiveEffort' } as const, null)
-const modelReq = atom({ plugin: 'router-modelos', key: 'modelReq' } as const, null)
-const effortReq = atom({ plugin: 'router-modelos', key: 'effortReq' } as const, null)
-const confirmClear = atom({ plugin: 'router-modelos', key: 'confirmClear' } as const, false)
-const notice = atom({ plugin: 'router-modelos', key: 'notice' } as const, null)
+const caps = atom({ plugin: 'router-models', key: 'caps' } as const, null)
+const context = atom({ plugin: 'router-models', key: 'context' } as const, null)
+const tokens = atom({ plugin: 'router-models', key: 'tokens' } as const, null)
+const currentModel = atom({ plugin: 'router-models', key: 'currentModel' } as const, null)
+const apiModel = atom({ plugin: 'router-models', key: 'apiModel' } as const, null)
+const effectiveEffort = atom({ plugin: 'router-models', key: 'effectiveEffort' } as const, null)
+const modelReq = atom({ plugin: 'router-models', key: 'modelReq' } as const, null)
+const effortReq = atom({ plugin: 'router-models', key: 'effortReq' } as const, null)
+const confirmClear = atom({ plugin: 'router-models', key: 'confirmClear' } as const, false)
+const notice = atom({ plugin: 'router-models', key: 'notice' } as const, null)
 
 type $ = EngineInterface
 

@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-const PLUGIN = 'router-modelos'
+const PLUGIN = 'router-models'
 
 const band = (bodyColumns = 140, isWorking = false) =>
   ({

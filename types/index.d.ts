@@ -58,7 +58,7 @@ export type RcNotice = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'router-modelos': {
+    'router-models': {
       caps: RcCaps | null
       context: RcContext | null
       tokens: RcTokens | null

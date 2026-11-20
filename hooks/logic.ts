@@ -3,7 +3,7 @@ import type { CommandInfo, ConfigRow } from 'claude-code'
 
 import type { RcCaps, RcEffort, RcModelOption, RcRequest } from '../types'
 
-export const PLUGIN = 'router-modelos'
+export const PLUGIN = 'router-models'
 
 /** Os cinco níveis que a API desta build declara (ModelEffort), do mais leve ao mais pesado. */
 export const EFFORTS: readonly RcEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
